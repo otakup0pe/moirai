@@ -1,0 +1,30 @@
+FROM erlang:27-slim
+
+RUN apt-get update \
+    && apt-get install -y make git openssh-client \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Pre-populate system-wide known_hosts so git+ssh dep fetches don't
+# prompt for host-key verification when run with the host SSH agent
+# socket forwarded into the container at runtime.
+RUN mkdir -p /etc/ssh \
+    && ssh-keyscan github.com >> /etc/ssh/ssh_known_hosts 2>/dev/null \
+    && chmod 644 /etc/ssh/ssh_known_hosts
+
+# Install rebar3 from source -- erlang:27-slim ships rebar3 binary
+# but pinning to upstream HEAD avoids drift across base-image releases.
+RUN git clone https://github.com/erlang/rebar3.git /tmp/rebar3 \
+    && cd /tmp/rebar3 && ./bootstrap \
+    && install -m 755 /tmp/rebar3/rebar3 /usr/local/bin/rebar3 \
+    && rm -rf /tmp/rebar3
+
+# Source is bind-mounted from the host at runtime via compose, NOT
+# COPY'd. _build and rebar3_cache are persistent named volumes;
+# deps are fetched on first invocation using the host SSH agent
+# socket forwarded by compose. _checkouts/klotho and
+# _checkouts/erl_mcp must exist on the host before docker compose
+# run is invoked.
+
+CMD ["make", "local-test"]

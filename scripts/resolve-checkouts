@@ -1,0 +1,30 @@
+#!/bin/sh
+# Scan _checkouts/ for symlinks, emit docker-compose volume overrides
+# that mount each symlink target directly at /app/_checkouts/<name>
+# inside the container -- shadowing the symlink with the real
+# directory. This bypasses any symlink-resolution edge cases under
+# the bind mount.
+SERVICES="test"
+CHECKOUTS_DIR="${1:-_checkouts}"
+VOLUMES=""
+
+for entry in "$CHECKOUTS_DIR"/*; do
+    [ -L "$entry" ] || continue
+    real_path="$(readlink -f "$entry" 2>/dev/null)" || true
+    name="$(basename "$entry")"
+    if [ -z "$real_path" ] || [ ! -d "$real_path" ]; then
+        printf "WARNING: skipping broken symlink %s\n" "$entry" >&2
+        continue
+    fi
+    VOLUMES="${VOLUMES}      - ${real_path}:/app/${CHECKOUTS_DIR}/${name}:ro\n"
+done
+
+if [ -z "$VOLUMES" ]; then
+    printf "# no symlinked checkouts found\nservices: {}\n"
+else
+    printf "services:\n"
+    for svc in $SERVICES; do
+        printf "  %s:\n    volumes:\n" "$svc"
+        printf "%b" "$VOLUMES"
+    done
+fi

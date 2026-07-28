@@ -1,0 +1,20 @@
+{application, moirai, [
+    {description, "Reference harness wiring erl_openrouter + erl_mcp + klotho"},
+    {vsn, "0.1.0"},
+    {registered, []},
+    {mod, {moirai_app, []}},
+    %% Phase 2 adds erl_mcp (gitmcp.io client) and inets (HTTP).
+    {applications, [
+        kernel,
+        stdlib,
+        inets,
+        ssl,
+        erl_openrouter,
+        erl_mcp,
+        klotho
+    ]},
+    {env, []},
+    {modules, []},
+    {licenses, ["Apache-2.0"]},
+    {links, [{"GitHub", "https://github.com/otakup0pe/moirai"}]}
+]}.
