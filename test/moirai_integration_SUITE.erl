@@ -67,8 +67,14 @@ fs_demo_runs_to_stop(_Config) ->
                "list_directory tool, then tell me what you found.">>,
     Result = moirai_demo:run(#{prompt => Prompt, verbose => false}),
     ct:pal("Demo result: ~p", [Result]),
-    {ok, KlothoResult} = Result,
-    ok = KlothoResult#klotho_result.status.
+    case Result of
+        {ok, #klotho_result{status = ok}} ->
+            ok;
+        {ok, #klotho_result{status = Status, error = Reason}} ->
+            ct:fail({demo_failed, Status, Reason});
+        {error, Reason} ->
+            ct:fail({demo_failed, Reason})
+    end.
 
 %% @doc Verify that MCP tool discovery works against gitmcp.io.
 %%

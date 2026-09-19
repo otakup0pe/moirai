@@ -8,6 +8,10 @@
 
 -export([allowed_repos/0, gitmcp_url/1, validate_repo/1]).
 
+%% These public contracts intentionally abstract over fixed literal
+%% return shapes.
+-dialyzer({no_underspecs, [allowed_repos/0, gitmcp_url/1]}).
+
 %% @doc Return the list of allowed GitHub repos for gitmcp.io access.
 -spec allowed_repos() -> [binary()].
 allowed_repos() ->

@@ -19,7 +19,15 @@
 
 -export([run/0, run/1, run_with_mcp/0]).
 
--define(DEMO_MODEL, <<"google/gemma-4-26b-a4b-it:free">>).
+-ifdef(TEST).
+-export([safe_stop/1]).
+-endif.
+
+%% This private helper is called with a compile-time timeout constant;
+%% its broader contract is intentional.
+-dialyzer({no_underspecs, wait_until_ready/2}).
+
+-define(DEMO_MODEL, <<"google/gemma-4-26b-a4b-it">>).
 -define(DEMO_MAX_STEPS, 10).
 -define(DEMO_MAX_WALL_CLOCK_MS, 120000).
 -define(DEMO_TOOL_TIMEOUT_MS, 30000).
@@ -124,7 +132,7 @@ one_shot(Model, Tools, Verbose, SystemPrompt, Prompt) ->
     unlink(Pid),
     Timeout = ?DEMO_MAX_WALL_CLOCK_MS + 5000,
     Result = klotho_agent:run(Pid, Timeout),
-    klotho_agent:stop(Pid),
+    safe_stop(Pid),
     case Result of
         {ok, R} ->
             print_result(R),
@@ -234,7 +242,9 @@ stop_mcp_clients(Clients) ->
 
 safe_stop_client(Pid) ->
     try erl_mcp_client:stop(Pid)
-    catch exit:{noproc, _} -> ok
+    catch
+        exit:noproc -> ok;
+        exit:{noproc, _} -> ok
     end.
 
 -spec collect_mcp_tools([{pid(), binary()}]) ->
@@ -281,7 +291,8 @@ dedup_tools([#klotho_tool{name = Name} = T | Rest], Seen, Acc) ->
     end.
 
 %% @private Poll erl_mcp_client status until ready or timeout.
--spec wait_until_ready(pid(), timeout()) -> ok | {error, term()}.
+-spec wait_until_ready(pid(), non_neg_integer()) ->
+    ok | {error, timeout | {client_failed, term()}}.
 wait_until_ready(Pid, Timeout) ->
     Deadline = erlang:monotonic_time(millisecond) + Timeout,
     wait_until_ready_loop(Pid, Deadline).
@@ -367,11 +378,10 @@ print_result(#klotho_result{status = Status, message = Msg, error = Error,
 print_error(Reason) ->
     io:format(standard_error, "Error: ~p~n", [Reason]).
 
+-spec fmt_msg(binary() | undefined) -> binary().
 fmt_msg(undefined) -> <<"<no message>">>;
-fmt_msg(null) -> <<"<no message>">>;
 fmt_msg(<<>>) -> <<"<no message>">>;
-fmt_msg(Msg) when is_binary(Msg) -> Msg;
-fmt_msg(Msg) -> iolist_to_binary(io_lib:format("~p", [Msg])).
+fmt_msg(Msg) when is_binary(Msg) -> Msg.
 
 log_event({tool_calls, Step, Turn, TCs}) ->
     Names = [maps:get(<<"name">>,
@@ -392,7 +402,9 @@ log_event(_) ->
 
 safe_stop(Pid) ->
     try klotho_agent:stop(Pid)
-    catch exit:{noproc, _} -> ok
+    catch
+        exit:noproc -> ok;
+        exit:{noproc, _} -> ok
     end.
 
 default_sandbox() ->
