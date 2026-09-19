@@ -15,6 +15,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check out klotho
+        uses: actions/checkout@v4
+        with:
+          repository: otakup0pe/klotho
+          ref: main
+          path: _checkouts/klotho
+          token: ${{ secrets.KLOTHO_READ_TOKEN }}
+          persist-credentials: false
+
       - name: Install build deps
         run: apt-get update && apt-get install -y make git curl
 
@@ -37,6 +46,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check out klotho
+        uses: actions/checkout@v4
+        with:
+          repository: otakup0pe/klotho
+          ref: main
+          path: _checkouts/klotho
+          token: ${{ secrets.KLOTHO_READ_TOKEN }}
+          persist-credentials: false
 
       - name: Install build deps
         run: apt-get update && apt-get install -y make git curl
