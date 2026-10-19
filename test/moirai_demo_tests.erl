@@ -58,18 +58,50 @@ assistant_reply_has_conversation_boundaries_test() ->
     ?assertMatch({_, _}, binary:match(Text, <<"\nhello\n">>)),
     ?assertMatch({_, _}, binary:match(Text, <<"[2 steps, 31ms]">>)).
 
-ignored_paths_are_hidden_from_filesystem_tools_test() ->
-    Root = filename:absname("."),
-    #klotho_tool{handler = ListDirectory} =
-        moirai_tools:list_directory_tool(Root),
-    {ok, Entries} = ListDirectory(#{<<"path">> => <<".">>}),
-    ?assertEqual(nomatch, binary:match(Entries, <<"_build/">>)),
-    #klotho_tool{handler = ReadFile} = moirai_tools:read_file_tool(Root),
-    {error, Error} = ReadFile(#{<<"path">> => <<"rebar.lock">>}),
-    ?assertMatch({_, _}, binary:match(Error, <<"excluded by .gitignore">>)),
-    {error, TraversalError} =
-        ReadFile(#{<<"path">> => <<"../etc/passwd">>}),
-    ?assertMatch({_, _}, binary:match(TraversalError, <<"traversal blocked">>)).
+ignored_paths_are_hidden_without_git_metadata_test() ->
+    with_filesystem_tool_tree(fun(Root) ->
+        ?assertNot(filelib:is_dir(filename:join(Root, ".git"))),
+        #klotho_tool{handler = ListDirectory} =
+            moirai_tools:list_directory_tool(Root),
+        {ok, Entries} = ListDirectory(#{<<"path">> => <<".">>}),
+        ?assertEqual(nomatch, binary:match(Entries, <<"_build/">>)),
+        ?assertMatch({_, _}, binary:match(Entries, <<"visible.txt">>)),
+        #klotho_tool{handler = ReadFile} =
+            moirai_tools:read_file_tool(Root),
+        {error, Error} =
+            ReadFile(#{<<"path">> => <<"_build/hidden.txt">>}),
+        ?assertMatch(
+            {_, _},
+            binary:match(Error, <<"excluded by .gitignore">>)),
+        {ok, <<"visible">>} =
+            ReadFile(#{<<"path">> => <<"visible.txt">>}),
+        {error, TraversalError} =
+            ReadFile(#{<<"path">> => <<"../etc/passwd">>}),
+        ?assertMatch(
+            {_, _},
+            binary:match(TraversalError, <<"traversal blocked">>))
+    end).
+
+with_filesystem_tool_tree(Fun) ->
+    Root = filename:join(
+        "/tmp",
+        "moirai_tools_" ++
+            integer_to_list(erlang:unique_integer([positive]))),
+    ok = filelib:ensure_dir(filename:join(Root, "_build/placeholder")),
+    ok = file:write_file(
+        filename:join(Root, ".gitignore"),
+        <<"_build/\n">>),
+    ok = file:write_file(
+        filename:join(Root, "_build/hidden.txt"),
+        <<"hidden">>),
+    ok = file:write_file(
+        filename:join(Root, "visible.txt"),
+        <<"visible">>),
+    try
+        Fun(Root)
+    after
+        ok = file:del_dir_r(Root)
+    end.
 
 gitmcp_tools_are_repo_namespaced_test() ->
     Tool = moirai_tools:read_file_tool("."),

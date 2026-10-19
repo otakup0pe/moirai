@@ -50,24 +50,19 @@ list_directory_tool(SandboxRoot) ->
 
 list_directory_handler(SandboxRoot, #{<<"path">> := RelPath}) ->
     with_visible_path(SandboxRoot, RelPath,
-        fun(Path, _GitPath) ->
+        fun(Path, _GitPath, Rules) ->
             case file:list_dir(Path) of
                 {ok, Entries} ->
-                    case visible_entries(SandboxRoot, Path,
-                                         lists:sort(Entries)) of
-                        {ok, Visible} ->
-                            Lines = lists:map(fun(E) ->
-                                EntryPath = filename:join(Path, E),
-                                case filelib:is_dir(EntryPath) of
-                                    true -> [E, "/"];
-                                    false -> E
-                                end
-                            end, Visible),
-                            {ok, iolist_to_binary(
-                                lists:join("\n", Lines))};
-                        {error, _} = Error ->
-                            Error
-                    end;
+                    Visible = visible_entries(
+                        SandboxRoot, Path, lists:sort(Entries), Rules),
+                    Lines = lists:map(fun(E) ->
+                        EntryPath = filename:join(Path, E),
+                        case filelib:is_dir(EntryPath) of
+                            true -> [E, "/"];
+                            false -> E
+                        end
+                    end, Visible),
+                    {ok, iolist_to_binary(lists:join("\n", Lines))};
                 {error, enoent} ->
                     {error, <<"Directory not found: ", RelPath/binary>>};
                 {error, enotdir} ->
@@ -101,7 +96,7 @@ read_file_tool(SandboxRoot) ->
 
 read_file_handler(SandboxRoot, #{<<"path">> := RelPath}) ->
     with_visible_path(SandboxRoot, RelPath,
-        fun(Path, _GitPath) ->
+        fun(Path, _GitPath, _Rules) ->
             case file:read_file(Path) of
                 {ok, Content} ->
                     {ok, Content};
@@ -126,79 +121,44 @@ with_visible_path(SandboxRoot, RelPath, Fun) ->
         {error, _} = Error ->
             Error;
         {ok, Path, GitPath} ->
-            case git_ignore_status(SandboxRoot, GitPath) of
-                ignored ->
-                    {error, <<"Path excluded by .gitignore: ",
-                              RelPath/binary>>};
-                visible ->
-                    Fun(Path, GitPath);
+            case moirai_gitignore:load(canonical_root(SandboxRoot)) of
+                {ok, Rules} ->
+                    case git_ignore_status(Path, GitPath, Rules) of
+                        ignored ->
+                            {error, <<"Path excluded by .gitignore: ",
+                                      RelPath/binary>>};
+                        visible ->
+                            Fun(Path, GitPath, Rules)
+                    end;
                 {error, Reason} ->
                     {error, <<"Unable to evaluate .gitignore: ",
                               Reason/binary>>}
             end
     end.
 
-visible_entries(SandboxRoot, Path, Entries) ->
-    Result = lists:foldl(
-        fun
-            (Entry, {ok, Acc}) ->
-                GitPath = relative_from_root(
-                    canonical_root(SandboxRoot),
-                    filename:join(Path, Entry)),
-                case git_ignore_status(SandboxRoot, GitPath) of
-                    ignored -> {ok, Acc};
-                    visible -> {ok, [Entry | Acc]};
-                    {error, _} = Error -> Error
-                end;
-            (_Entry, {error, _} = Error) ->
-                Error
+visible_entries(SandboxRoot, Path, Entries, Rules) ->
+    lists:filter(
+        fun(Entry) ->
+            EntryPath = filename:join(Path, Entry),
+            GitPath = relative_from_root(
+                canonical_root(SandboxRoot), EntryPath),
+            git_ignore_status(EntryPath, GitPath, Rules) =:= visible
         end,
-        {ok, []},
-        Entries),
-    case Result of
-        {ok, Visible} -> {ok, lists:reverse(Visible)};
-        {error, Reason} ->
-            {error, <<"Unable to evaluate .gitignore: ",
-                      Reason/binary>>}
-    end.
+        Entries).
 
-git_ignore_status(SandboxRoot, GitPath) ->
+git_ignore_status(Path, GitPath, Rules) ->
     case filename:split(GitPath) of
         [".git" | _] ->
             ignored;
         _ ->
-            run_git_check_ignore(
-                os:find_executable("git"),
-                canonical_root(SandboxRoot),
-                GitPath)
-    end.
-
-run_git_check_ignore(false, _SandboxRoot, _GitPath) ->
-    {error, <<"git executable not found">>};
-run_git_check_ignore(Git, SandboxRoot, GitPath) ->
-    Port = open_port(
-        {spawn_executable, Git},
-        [binary, exit_status, stderr_to_stdout,
-         {args, ["-c", "safe.directory=" ++ SandboxRoot,
-                 "-C", SandboxRoot, "check-ignore", "--quiet",
-                 "--no-index", "--", GitPath]}]),
-    collect_git_check_ignore(Port, []).
-
-collect_git_check_ignore(Port, Output) ->
-    receive
-        {Port, {data, Data}} ->
-            collect_git_check_ignore(Port, [Data | Output]);
-        {Port, {exit_status, 0}} ->
-            ignored;
-        {Port, {exit_status, 1}} ->
-            visible;
-        {Port, {exit_status, Status}} ->
-            Detail = iolist_to_binary(lists:reverse(Output)),
-            {error, iolist_to_binary(io_lib:format(
-                "git check-ignore exited ~B: ~ts", [Status, Detail]))}
-    after 5000 ->
-        port_close(Port),
-        {error, <<"git check-ignore timed out">>}
+            Kind = case filelib:is_dir(Path) of
+                true -> directory;
+                false -> file
+            end,
+            case moirai_gitignore:ignored(GitPath, Kind, Rules) of
+                true -> ignored;
+                false -> visible
+            end
     end.
 
 resolve_sandboxed_path(SandboxRoot, RelPath) ->
