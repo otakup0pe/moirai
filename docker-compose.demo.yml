@@ -1,0 +1,22 @@
+---
+services:
+  weather:
+    image: ghcr.io/cmer81/open-meteo-mcp:1.7.0@sha256:1948055f1619d2ba9fc9440cb56f6f1582e15f69453d2540e4fb7dfeafddecc5
+    environment:
+      TRANSPORT: http
+      PORT: "3000"
+      RATE_LIMIT_RPM: "30"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+
+  test:
+    depends_on:
+      - weather
+    environment:
+      MOIRAI_PROJECT_ROOT: /app
+      MOIRAI_WEATHER_MCP_URL: http://weather:3000/mcp

@@ -16,7 +16,8 @@
 -spec allowed_repos() -> [binary()].
 allowed_repos() ->
     [<<"otakup0pe/erl_openrouter">>,
-     <<"otakup0pe/erl_mcp">>].
+     <<"otakup0pe/erl_mcp">>,
+     <<"otakup0pe/magicbeam">>].
 
 %% @doc Build the gitmcp.io MCP endpoint URL for a repo.
 %% Repo must be in "owner/name" format.

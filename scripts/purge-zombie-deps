@@ -1,0 +1,48 @@
+#!/bin/sh
+# Remove compiled dependency copies that no longer match _checkouts.
+#
+# Rebar3 checkouts override locked deps, but their compiled artifacts can
+# outlive the checkout itself. A later hand-built code path can then load
+# that orphan instead of the locked dependency.
+
+set -eu
+
+BUILD_ROOT="${1:-_build}"
+CHECKOUTS_DIR="${2:-_checkouts}"
+
+[ -d "$BUILD_ROOT" ] || exit 0
+
+is_live_checkout() {
+    dep="$1"
+    [ -d "$CHECKOUTS_DIR/$dep" ] || [ -f "$CHECKOUTS_DIR/.$dep.symlink" ]
+}
+
+purged=0
+for profile_dir in "$BUILD_ROOT"/*; do
+    [ -d "$profile_dir" ] || continue
+
+    for built_checkout in "$profile_dir/checkouts"/*; do
+        [ -d "$built_checkout" ] || continue
+        dep="$(basename "$built_checkout")"
+        if ! is_live_checkout "$dep"; then
+            printf "purge-zombie-deps: removing orphaned checkout %s\n" "$built_checkout" >&2
+            rm -rf "$built_checkout"
+            purged=$((purged + 1))
+        fi
+    done
+
+    for checkout in "$CHECKOUTS_DIR"/*; do
+        [ -d "$checkout" ] || continue
+        dep="$(basename "$checkout")"
+        built_lib="$profile_dir/lib/$dep"
+        if [ -d "$built_lib" ]; then
+            printf "purge-zombie-deps: removing %s (shadowed by %s)\n" "$built_lib" "$checkout" >&2
+            rm -rf "$built_lib"
+            purged=$((purged + 1))
+        fi
+    done
+done
+
+if [ "$purged" -gt 0 ]; then
+    printf "purge-zombie-deps: removed %d zombie dep(s)\n" "$purged" >&2
+fi

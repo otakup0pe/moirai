@@ -4,176 +4,122 @@
 [![Maintenance](https://img.shields.io/maintenance/yes/2026.svg)](https://github.com/otakup0pe/moirai)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-Reference harness wiring
-[erl_openrouter](https://github.com/otakup0pe/erl_openrouter) +
-[erl_mcp](https://github.com/otakup0pe/erl_mcp) +
-[klotho](https://github.com/otakup0pe/klotho) into a runnable,
-citable, teachable artifact.
+Moirai assembles an Erlang/OTP agent from
+[erl_openrouter](https://github.com/otakup0pe/erl_openrouter),
+[erl_mcp](https://github.com/otakup0pe/erl_mcp),
+[klotho](https://github.com/otakup0pe/klotho), and
+[Magicbeam](https://github.com/otakup0pe/magicbeam).
 
-Named after the Greek Fates collectively -- klotho spins the thread,
-the moirai are the assembled whole.
+Named after the Greek Fates collectively: Klotho spins the thread;
+the Moirai are the assembled whole.
 
-## What This Is
+## What it demonstrates
 
-moirai is a learning artifact, not a production application. It
-demonstrates how to wire an Erlang/OTP LLM agent stack
-end-to-end:
+Moirai is a learning artifact, not a production application. The
+application itself is the demo:
 
-1. An `openrouter_client` lives under a supervisor (long-lived)
-2. A `klotho_agent` is started per-task as a one-shot process
-3. Tool definitions are concrete `#klotho_tool{}` records in a
-   dedicated module
-4. The agent loop drives LLM calls, dispatches tool calls, and
-   returns a result with a full step trace
-5. Remote MCP tools from [gitmcp.io](https://gitmcp.io) are
-   bridged into the same agent via `klotho_mcp`, mixing local
-   and remote tools seamlessly
+- erl_openrouter provides the supervised OpenRouter client
+- Klotho owns the multi-turn tool-use loop
+- erl_mcp discovers weather and repository tools asynchronously
+- Shellbeam provides the interactive command shell
+- local tools inspect the real Moirai checkout, not a fixture project
 
-## Dependency Tree
-
-```
-moirai
-├── erl_openrouter   (LLM transport -- OpenRouter API client)
-├── erl_mcp          (MCP protocol client and server)
-└── klotho           (tool-use loop orchestrator)
-    └── erl_openrouter
-```
+The weather MCP is an isolated
+[Open-Meteo](https://open-meteo.com/) sidecar and needs no API key.
+A GeoIP lookup contributes an approximate location to the initial
+agent context. Both are optional: startup and local chat tools remain
+available if either endpoint is slow or unavailable.
 
 ## Requirements
 
-Docker. It's all in a container.
-
-## Running the Demo
-
-The demo wires a klotho_agent some sandboxed filesystem tools and an
-external MCP.  You need an OpenRouter API key for the LLM call.
-
-The two points of entry are
-
-* `make demo` to bring up an interactive demo
-* `make shell` to invoke beam shell directly
-
-### Interactive Mode (multi-turn, summarize on exit)
+Docker and an OpenRouter API key:
 
 ```bash
 export OPENROUTER_API_KEY=sk-or-v1-...
 make demo
 ```
 
-This starts an interactive loop — type messages at the `moirai>`
-prompt. The agent uses `list_directory` and `read_file` to explore
-`priv/demo_files/` and answer your questions. It uses the
-`search_*_code` and `fetch_*_documentation` MCP tools to access
-documentation on `erl_openrouter`, `erl_mcp`, `klotho`, and `moirai` -
-the four components of this little ecosystem.
+The custom Shellbeam prompt accepts natural language directly. Its
+built-in commands are:
 
-Type `quit` or `exit` (or send EOF) to end the session. Before
-stopping, the agent generates a brief summary of the conversation.
+- `tools` — show tools discovered so far
+- `status` — show the model and background discovery state
+- `reset` — discard the current conversation
+- `help` — show shell help
+- `quit` — summarize the conversation and leave the shell
+- `exit` — leave immediately without a summary
 
-### One-shot Mode
+Moirai starts the shell immediately with `list_directory` and
+`read_file`. If background MCP discovery is still running, the first
+chat waits for it before creating the Klotho agent so that weather and
+repo-namespaced gitmcp.io tools remain available for the conversation.
 
-Open the interactive erlang shell and invoke `moirai_demo:run/1` directly.
+For a regular Erlang shell:
 
 ```bash
-export OPENROUTER_API_KEY=sk-or-v1-...
 make shell
 ```
 
-```erlang
-
-moirai_demo:run(#{prompt => <<"List the project files.">>}).
-```
-
-Sends a single prompt, prints the result, and returns
-`{ok, #klotho_result{}}`.
-
-### MCP Mode (local + remote tools)
-
-# gadget note - THIS NEEDS UPDATE?
-
-```bash
-export OPENROUTER_API_KEY=sk-or-v1-...
-make shell
-
-# In the Erlang shell:
-moirai_demo:run_with_mcp().
-```
-
-This connects to [gitmcp.io](https://gitmcp.io) over HTTP
-streamable MCP transport for all four repos in the Erlang agent
-stack (moirai, erl_openrouter, erl_mcp, klotho). The agent gets
-both the local filesystem tools and the remote GitHub
-documentation/code-search tools. An internal guardrail
-(`moirai_mcp_config`) restricts which repos can be queried.
-
-You can also select specific repos:
+One-shot use returns Klotho's result record:
 
 ```erlang
-moirai_demo:run(#{
-    mcp_repos => [<<"otakup0pe/moirai">>, <<"otakup0pe/klotho">>]
+moirai:run(#{
+    prompt => <<"Inspect this checkout and explain its OTP structure.">>,
+    verbose => true
 }).
 ```
 
-### Options
+Set `MOIRAI_PROJECT_ROOT`, `MOIRAI_GEOIP_URL`, or
+`MOIRAI_WEATHER_MCP_URL` to override their defaults.
 
-```erlang
-moirai_demo:run(#{
-    model     => <<"google/gemma-3-27b-it">>,  %% default
-    prompt    => <<"...">>,       %% set for one-shot; omit for interactive
-    verbose   => true,            %% print step trace (default: true)
-    sandbox   => "/path/to/dir", %% sandbox root (default: priv/demo_files)
-    mcp_repos => [binary()]       %% gitmcp.io repos (default: [])
-}).
+## Dependency tree
+
+```text
+moirai
+├── erl_openrouter   OpenRouter transport
+├── erl_mcp          MCP client
+├── klotho           agent/tool-use loop
+└── magicbeam
+    ├── shellbeam    interactive shell
+    ├── hotbeam      optional development reloads
+    └── thunderbeam  optional supervision testing
 ```
+
+Hotbeam and Thunderbeam ship with the dependency but remain disabled
+by default.
 
 ## Testing
 
-All targets run in docker by default. `local-*` variants run on
-the host for users with OTP 27 + rebar3 installed locally.
-
-```
-make compile       # docker compile
-make test          # docker eunit + common_test
-make dialyzer      # docker dialyzer
-make shell         # docker rebar3 shell
-```
-
-The integration test suite (`moirai_integration_SUITE`) has two
-groups:
-
-- **llm_tests** -- end-to-end filesystem demo. Requires
-  `OPENROUTER_API_KEY`. Skipped automatically if not set.
-- **mcp_tests** -- gitmcp.io tool discovery. Requires outbound
-  HTTPS. Skips gracefully if gitmcp.io is unreachable.
+All standard targets run in Docker. The `local-*` variants require
+OTP 27+ and rebar3. `make test` is the consolidated gate: EUnit,
+Common Test, runtime smoke, Dialyzer, coverage, Compose validation, and
+the PTY/Edlin demo smoke test.
 
 ```bash
-OPENROUTER_API_KEY=sk-or-v1-... make test
+make compile
+make test
+make dialyzer
+make shell
 ```
 
-## Reference Stack
+`moirai_integration_SUITE` tests live LLM and MCP paths. The LLM
+group skips when `OPENROUTER_API_KEY` is absent; the MCP group skips
+when its public endpoint is unreachable.
 
-- [erl_openrouter](https://github.com/otakup0pe/erl_openrouter) -- LLM transport with tool use
-- [erl_mcp](https://github.com/otakup0pe/erl_mcp) -- MCP protocol client and server
-- [klotho](https://github.com/otakup0pe/klotho) -- tool-use loop orchestrator
-- **moirai** (this repo) -- end-to-end harness wiring all three
+## Public-endpoint posture
 
-## Blog Series
+The demo publishes no local ports. The weather container is read-only,
+drops Linux capabilities, runs with `no-new-privileges`, and limits the
+single private-network client to 30 requests per minute. Remote
+weather, GeoIP, gitmcp.io, and OpenRouter services still receive the
+minimum request metadata needed to answer; do not use the demo for
+sensitive prompts or private source trees.
 
-TODO: Links to blog posts will be added as the series is published.
+## Note on AI usage
 
-## Note on AI Usage
-
-This project has been developed with AI assistance. Contributions making
-use of AI generated content are welcome, however they _must_ be human
-reviewed prior to submission as pull requests, or issues. All contributors
-must be able to fully explain and defend any AI generated code,
-documentation, issues, or tests they submit. Contributions making use of
-AI must have this explicitly declared in the pull request or issue. This
-also applies to utilization of AI for reviewing of pull requests.
-
-## Feedback
-
-Open an issue at https://github.com/otakup0pe/moirai/issues
+This project has been developed with AI assistance. AI-assisted
+contributions are welcome when they are human-reviewed, explicitly
+declared, and the contributor can explain and defend them.
 
 ## License
 

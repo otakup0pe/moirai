@@ -49,21 +49,25 @@ list_directory_tool(SandboxRoot) ->
     }.
 
 list_directory_handler(SandboxRoot, #{<<"path">> := RelPath}) ->
-    FullPath = resolve_sandboxed_path(SandboxRoot, RelPath),
-    case FullPath of
-        {error, _} = Err -> Err;
-        Path ->
+    with_visible_path(SandboxRoot, RelPath,
+        fun(Path, _GitPath) ->
             case file:list_dir(Path) of
                 {ok, Entries} ->
-                    Sorted = lists:sort(Entries),
-                    Lines = lists:map(fun(E) ->
-                        EntryPath = filename:join(Path, E),
-                        case filelib:is_dir(EntryPath) of
-                            true -> [E, "/"];
-                            false -> E
-                        end
-                    end, Sorted),
-                    {ok, iolist_to_binary(lists:join("\n", Lines))};
+                    case visible_entries(SandboxRoot, Path,
+                                         lists:sort(Entries)) of
+                        {ok, Visible} ->
+                            Lines = lists:map(fun(E) ->
+                                EntryPath = filename:join(Path, E),
+                                case filelib:is_dir(EntryPath) of
+                                    true -> [E, "/"];
+                                    false -> E
+                                end
+                            end, Visible),
+                            {ok, iolist_to_binary(
+                                lists:join("\n", Lines))};
+                        {error, _} = Error ->
+                            Error
+                    end;
                 {error, enoent} ->
                     {error, <<"Directory not found: ", RelPath/binary>>};
                 {error, enotdir} ->
@@ -71,7 +75,7 @@ list_directory_handler(SandboxRoot, #{<<"path">> := RelPath}) ->
                 {error, Reason} ->
                     {error, iolist_to_binary(io_lib:format("~p", [Reason]))}
             end
-    end;
+        end);
 list_directory_handler(_SandboxRoot, _Args) ->
     {error, {missing_required_field, <<"path">>}}.
 
@@ -96,21 +100,20 @@ read_file_tool(SandboxRoot) ->
     }.
 
 read_file_handler(SandboxRoot, #{<<"path">> := RelPath}) ->
-    FullPath = resolve_sandboxed_path(SandboxRoot, RelPath),
-    case FullPath of
-        {error, _} = Err -> Err;
-        Path ->
+    with_visible_path(SandboxRoot, RelPath,
+        fun(Path, _GitPath) ->
             case file:read_file(Path) of
                 {ok, Content} ->
                     {ok, Content};
                 {error, enoent} ->
                     {error, <<"File not found: ", RelPath/binary>>};
                 {error, eisdir} ->
-                    {error, <<"Path is a directory, not a file: ", RelPath/binary>>};
+                    {error, <<"Path is a directory, not a file: ",
+                              RelPath/binary>>};
                 {error, Reason} ->
                     {error, iolist_to_binary(io_lib:format("~p", [Reason]))}
             end
-    end;
+        end);
 read_file_handler(_SandboxRoot, _Args) ->
     {error, {missing_required_field, <<"path">>}}.
 
@@ -118,13 +121,111 @@ read_file_handler(_SandboxRoot, _Args) ->
 %% Internal
 %%--------------------------------------------------------------------
 
-resolve_sandboxed_path(SandboxRoot, RelPath) ->
-    Candidate = filename:join(SandboxRoot, RelPath),
-    Canonical = filename:absname(Candidate),
-    AbsRoot = filename:absname(SandboxRoot),
-    case string:prefix(Canonical, AbsRoot) of
-        nomatch ->
-            {error, <<"Path traversal blocked: ", RelPath/binary>>};
-        _Rest ->
-            Canonical
+with_visible_path(SandboxRoot, RelPath, Fun) ->
+    case resolve_sandboxed_path(SandboxRoot, RelPath) of
+        {error, _} = Error ->
+            Error;
+        {ok, Path, GitPath} ->
+            case git_ignore_status(SandboxRoot, GitPath) of
+                ignored ->
+                    {error, <<"Path excluded by .gitignore: ",
+                              RelPath/binary>>};
+                visible ->
+                    Fun(Path, GitPath);
+                {error, Reason} ->
+                    {error, <<"Unable to evaluate .gitignore: ",
+                              Reason/binary>>}
+            end
     end.
+
+visible_entries(SandboxRoot, Path, Entries) ->
+    Result = lists:foldl(
+        fun
+            (Entry, {ok, Acc}) ->
+                GitPath = relative_from_root(
+                    canonical_root(SandboxRoot),
+                    filename:join(Path, Entry)),
+                case git_ignore_status(SandboxRoot, GitPath) of
+                    ignored -> {ok, Acc};
+                    visible -> {ok, [Entry | Acc]};
+                    {error, _} = Error -> Error
+                end;
+            (_Entry, {error, _} = Error) ->
+                Error
+        end,
+        {ok, []},
+        Entries),
+    case Result of
+        {ok, Visible} -> {ok, lists:reverse(Visible)};
+        {error, Reason} ->
+            {error, <<"Unable to evaluate .gitignore: ",
+                      Reason/binary>>}
+    end.
+
+git_ignore_status(SandboxRoot, GitPath) ->
+    case filename:split(GitPath) of
+        [".git" | _] ->
+            ignored;
+        _ ->
+            run_git_check_ignore(
+                os:find_executable("git"),
+                canonical_root(SandboxRoot),
+                GitPath)
+    end.
+
+run_git_check_ignore(false, _SandboxRoot, _GitPath) ->
+    {error, <<"git executable not found">>};
+run_git_check_ignore(Git, SandboxRoot, GitPath) ->
+    Port = open_port(
+        {spawn_executable, Git},
+        [binary, exit_status, stderr_to_stdout,
+         {args, ["-c", "safe.directory=" ++ SandboxRoot,
+                 "-C", SandboxRoot, "check-ignore", "--quiet",
+                 "--no-index", "--", GitPath]}]),
+    collect_git_check_ignore(Port, []).
+
+collect_git_check_ignore(Port, Output) ->
+    receive
+        {Port, {data, Data}} ->
+            collect_git_check_ignore(Port, [Data | Output]);
+        {Port, {exit_status, 0}} ->
+            ignored;
+        {Port, {exit_status, 1}} ->
+            visible;
+        {Port, {exit_status, Status}} ->
+            Detail = iolist_to_binary(lists:reverse(Output)),
+            {error, iolist_to_binary(io_lib:format(
+                "git check-ignore exited ~B: ~ts", [Status, Detail]))}
+    after 5000 ->
+        port_close(Port),
+        {error, <<"git check-ignore timed out">>}
+    end.
+
+resolve_sandboxed_path(SandboxRoot, RelPath) ->
+    AbsRoot = canonical_root(SandboxRoot),
+    case filelib:safe_relative_path(path_to_list(RelPath), AbsRoot) of
+        unsafe ->
+            {error, <<"Path traversal blocked: ", RelPath/binary>>};
+        "." ->
+            {ok, AbsRoot, "."};
+        SafePath ->
+            Canonical = filename:join(AbsRoot, SafePath),
+            {ok, Canonical, relative_from_root(AbsRoot, Canonical)}
+    end.
+
+canonical_root(SandboxRoot) ->
+    Components = filename:split(
+        filename:absname(path_to_list(SandboxRoot))),
+    filename:join([Component || Component <- Components,
+                                Component =/= "."]).
+
+relative_from_root(Root, Root) ->
+    ".";
+relative_from_root(Root, Path) ->
+    Prefix = Root ++ "/",
+    string:slice(Path, length(Prefix)).
+
+path_to_list(Path) when is_list(Path) ->
+    Path;
+path_to_list(Path) when is_binary(Path) ->
+    binary_to_list(Path).

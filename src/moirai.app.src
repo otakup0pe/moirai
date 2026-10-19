@@ -1,9 +1,8 @@
 {application, moirai, [
-    {description, "Reference harness wiring erl_openrouter + erl_mcp + klotho"},
+    {description, "Erlang/OTP agent harness built from erl_openrouter, erl_mcp, klotho, and magicbeam"},
     {vsn, "0.1.0"},
     {registered, []},
     {mod, {moirai_app, []}},
-    %% Phase 2 adds erl_mcp (gitmcp.io client) and inets (HTTP).
     {applications, [
         kernel,
         stdlib,
@@ -11,7 +10,8 @@
         ssl,
         erl_openrouter,
         erl_mcp,
-        klotho
+        klotho,
+        magicbeam
     ]},
     {env, []},
     {modules, []},

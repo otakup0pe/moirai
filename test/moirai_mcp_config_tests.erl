@@ -1,9 +1,13 @@
 -module(moirai_mcp_config_tests).
 -include_lib("eunit/include/eunit.hrl").
 
-allowed_repos_returns_two_test() ->
+allowed_repos_include_public_stack_test() ->
     Repos = moirai_mcp_config:allowed_repos(),
-    ?assertEqual(2, length(Repos)).
+    ?assertEqual(
+        [<<"otakup0pe/erl_openrouter">>,
+         <<"otakup0pe/erl_mcp">>,
+         <<"otakup0pe/magicbeam">>],
+        Repos).
 
 gitmcp_url_builds_correct_url_test() ->
     ?assertEqual(<<"https://gitmcp.io/otakup0pe/erl_mcp">>,
@@ -11,7 +15,8 @@ gitmcp_url_builds_correct_url_test() ->
 
 validate_repo_allows_known_test() ->
     ?assertEqual(ok, moirai_mcp_config:validate_repo(<<"otakup0pe/erl_openrouter">>)),
-    ?assertEqual(ok, moirai_mcp_config:validate_repo(<<"otakup0pe/erl_mcp">>)).
+    ?assertEqual(ok, moirai_mcp_config:validate_repo(<<"otakup0pe/erl_mcp">>)),
+    ?assertEqual(ok, moirai_mcp_config:validate_repo(<<"otakup0pe/magicbeam">>)).
 
 validate_repo_blocks_unknown_test() ->
     ?assertEqual({error, {repo_not_allowed, <<"evil/repo">>}},

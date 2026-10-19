@@ -9,37 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Remote MCP tool support** -- `moirai_demo:run_with_mcp/0` connects
-  to gitmcp.io over HTTP streamable transport and makes GitHub
-  documentation/code-search tools available alongside local filesystem
-  tools in the same klotho agent. Uses `klotho_mcp:tools_from_client/2`
-  bridge for tool conversion.
-- **moirai_mcp_config** -- Guardrail module restricting gitmcp.io access
-  to the four Erlang agent stack repos (moirai, erl_openrouter,
-  erl_mcp, klotho).
-- **mcp_tool_discovery** integration test -- CT test case verifying
-  end-to-end MCP tool discovery against gitmcp.io (skips gracefully
-  when network is unavailable).
-- `erl_mcp` and `inets` added as runtime dependencies.
-- **moirai_app** -- OTP application callback.
-- **moirai_sup** -- Top-level supervisor (empty children list;
-  openrouter_client is started by erl_openrouter's own supervision
-  tree as a transitive application dependency).
-- **moirai_tools** -- Tool definitions as `#klotho_tool{}` records:
-  `echo_input` (synthetic echo), `list_directory` and `read_file`
-  (sandboxed filesystem access with path-traversal protection).
-- **moirai_demo** -- Interactive multi-turn demo and one-shot mode.
-  Starts a klotho_agent with filesystem tools pointed at
-  `priv/demo_files/`, loops on stdin via `klotho_agent:resume/2`
-  with `max_turns => infinity`, and injects a summary prompt on
-  quit/EOF before stopping the agent. One-shot mode (pass `prompt`
-  in the options map) is used by the integration test.
-- **moirai_integration_SUITE** -- Common Test suite for end-to-end
-  verification using filesystem tools (gated on OPENROUTER_API_KEY
-  env var).
-- `priv/demo_files/` fixture corpus for the filesystem tools demo.
-- Docker-based test infrastructure (Dockerfile.test,
-  docker-compose.test.yml, Makefile targets).
-- GitHub Actions CI workflow.
-- README with setup, demo instructions, and reference stack links.
-- AGENTS.md with module inventory and design decisions.
+- **Moirai agent application** -- `moirai` assembles erl_openrouter,
+  erl_mcp, Klotho, and Magicbeam into one Erlang/OTP learning artifact.
+- **Interactive Shellbeam demo** -- Colored conversation boundaries,
+  Edlin history and navigation, human-readable status, conversation
+  reset, and summarize-on-quit.
+- **Local checkout tools** -- `list_directory` and `read_file`
+  inspect the real Moirai source tree while blocking traversal and
+  paths excluded by `.gitignore`.
+- **Asynchronous MCP discovery** -- Open-Meteo weather tools and
+  repo-namespaced gitmcp.io tools connect in the background. The
+  gitmcp.io guardrail permits erl_openrouter, erl_mcp, and magicbeam.
+- **Approximate local weather context** -- Optional GeoIP context feeds
+  the isolated Open-Meteo MCP sidecar without requiring a weather API
+  key.
+- **One-shot API** -- `moirai:run/1` runs a Klotho agent against the
+  local project tools and returns its result record.
+- **Dependency hygiene** -- Checkout-aware Docker mounts and
+  `scripts/purge-zombie-deps` prevent stale compiled dependencies from
+  shadowing the active lock or checkout.
+- **Consolidated test gate** -- `make test` runs EUnit, Common Test,
+  runtime startup, Dialyzer, coverage, Compose validation, and a real
+  PTY/Edlin shell smoke test.
+- **Live integration coverage** -- Gated OpenRouter and gitmcp.io tests
+  exercise the assembled stack when their prerequisites are available.
+- Docker-based build infrastructure, GitHub Actions CI, and the Avakas
+  release workflow.

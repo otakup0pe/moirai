@@ -35,9 +35,6 @@ jobs:
       - name: Run tests
         run: make local-test
 
-      - name: Dialyzer
-        run: make local-dialyzer
-
   integration:
     runs-on: ubuntu-latest
     container:

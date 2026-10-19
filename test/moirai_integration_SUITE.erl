@@ -2,12 +2,12 @@
 
 %% @doc Integration test suite for moirai.
 %%
-%% Exercises the full end-to-end path: moirai_demo builds a
-%% klotho agent config with filesystem tools pointed at
-%% priv/demo_files/, runs a real LLM call through erl_openrouter,
-%% and verifies the agent completes successfully.
+%% Exercises the full end-to-end path: moirai builds a klotho agent
+%% config with filesystem tools pointed at the real source checkout,
+%% runs a real LLM call through erl_openrouter, and verifies the agent
+%% completes successfully.
 %%
-%% fs_demo_runs_to_stop requires OPENROUTER_API_KEY in the
+%% moirai_runs_to_stop requires OPENROUTER_API_KEY in the
 %% environment. mcp_tool_discovery requires network access to
 %% gitmcp.io. Both skip automatically when prerequisites are
 %% not met.
@@ -21,13 +21,13 @@
 -export([all/0, groups/0,
          init_per_suite/1, end_per_suite/1,
          init_per_group/2, end_per_group/2]).
--export([fs_demo_runs_to_stop/1, mcp_tool_discovery/1]).
+-export([moirai_runs_to_stop/1, mcp_tool_discovery/1]).
 
 all() ->
     [{group, llm_tests}, {group, mcp_tests}].
 
 groups() ->
-    [{llm_tests, [], [fs_demo_runs_to_stop]},
+    [{llm_tests, [], [moirai_runs_to_stop]},
      {mcp_tests, [], [mcp_tool_discovery]}].
 
 init_per_suite(Config) ->
@@ -55,18 +55,12 @@ init_per_group(_Group, Config) ->
 end_per_group(_Group, _Config) ->
     ok.
 
-%% @doc Verify that the filesystem demo runs to completion.
-%%
-%% One-shot mode: starts a klotho_agent with list_directory and
-%% read_file tools against priv/demo_files/, asks the LLM to
-%% explore the project, and asserts:
-%%   1. The return is {ok, #klotho_result{}}
-%%   2. The result status is 'ok' (finish_reason: stop)
-fs_demo_runs_to_stop(_Config) ->
+%% @doc Verify that Moirai can inspect its own checkout.
+moirai_runs_to_stop(_Config) ->
     Prompt = <<"List the files in the project root using the "
                "list_directory tool, then tell me what you found.">>,
-    Result = moirai_demo:run(#{prompt => Prompt, verbose => false}),
-    ct:pal("Demo result: ~p", [Result]),
+    Result = moirai:run(#{prompt => Prompt, verbose => false}),
+    ct:pal("Moirai result: ~p", [Result]),
     case Result of
         {ok, #klotho_result{status = ok}} ->
             ok;
@@ -78,11 +72,11 @@ fs_demo_runs_to_stop(_Config) ->
 
 %% @doc Verify that MCP tool discovery works against gitmcp.io.
 %%
-%% Starts an erl_mcp_client pointing at gitmcp.io/otakup0pe/moirai,
+%% Starts an erl_mcp_client for an allow-listed repository,
 %% calls klotho_mcp:tools_from_client/2, and asserts at least one
 %% tool is returned. Skips if gitmcp.io is unreachable.
 mcp_tool_discovery(_Config) ->
-    Url = <<"https://gitmcp.io/otakup0pe/erl_mcp">>,
+    Url = moirai_mcp_config:gitmcp_url(<<"otakup0pe/magicbeam">>),
     ClientConfig = #{
         server_url => Url,
         transport => erl_mcp_transport_http_streamable,
@@ -96,17 +90,19 @@ mcp_tool_discovery(_Config) ->
                 case wait_for_client(Pid, 15000) of
                     {error, WaitErr} ->
                         ct:pal("Client not ready: ~p", [WaitErr]),
-                        throw({skip, "gitmcp.io handshake failed"});
-                    ok -> ok
-                end,
-                {ok, Tools} = klotho_mcp:tools_from_client(Pid, 30000),
-                ct:pal("Discovered ~B tools from gitmcp.io", [length(Tools)]),
-                true = length(Tools) > 0,
-                Names = [T#klotho_tool.name || T <- Tools],
-                ct:pal("Tool names: ~p", [Names]),
-                ok
+                        {skip, "gitmcp.io handshake failed"};
+                    ok ->
+                        {ok, Tools} =
+                            klotho_mcp:tools_from_client(Pid, 30000),
+                        ct:pal("Discovered ~B tools from gitmcp.io",
+                            [length(Tools)]),
+                        true = length(Tools) > 0,
+                        Names = [T#klotho_tool.name || T <- Tools],
+                        ct:pal("Tool names: ~p", [Names]),
+                        ok
+                end
             after
-                erl_mcp_client:stop(Pid)
+                safe_stop_client(Pid)
             end;
         {error, Reason} ->
             ct:pal("Cannot connect to gitmcp.io: ~p", [Reason]),
@@ -119,7 +115,7 @@ wait_for_client(Pid, Timeout) ->
     wait_for_client_loop(Pid, Deadline).
 
 wait_for_client_loop(Pid, Deadline) ->
-    case erl_mcp_client:status(Pid) of
+    case client_status(Pid) of
         #{state := ready} ->
             ok;
         #{state := failed, last_error := Err} ->
@@ -132,4 +128,18 @@ wait_for_client_loop(Pid, Deadline) ->
                     timer:sleep(100),
                     wait_for_client_loop(Pid, Deadline)
             end
+    end.
+
+client_status(Pid) ->
+    try erl_mcp_client:status(Pid)
+    catch
+        exit:noproc -> #{state => failed, last_error => noproc};
+        exit:{noproc, _} -> #{state => failed, last_error => noproc}
+    end.
+
+safe_stop_client(Pid) ->
+    try erl_mcp_client:stop(Pid)
+    catch
+        exit:noproc -> ok;
+        exit:{noproc, _} -> ok
     end.
