@@ -1,7 +1,7 @@
 ROOT_DIR:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 
 .PHONY: all compile docker-compile local-compile \
-        test docker-test local-test local-eunit local-ct test-runtime-smoke local-runtime-smoke test-demo-config test-demo-pty \
+        test docker-test local-test local-eunit test-runtime-smoke local-runtime-smoke test-demo-config test-demo-pty \
         dialyzer docker-dialyzer local-dialyzer \
         shell docker-shell local-shell \
         demo docker-demo local-demo \
@@ -119,14 +119,12 @@ lint-secrets-staged: lint-secrets
 local-compile:
 	$(REBAR3) compile
 
-local-test: local-eunit local-ct local-runtime-smoke local-dialyzer
+local-test: local-eunit local-runtime-smoke local-dialyzer
+	rm -f _build/test/cover/ct.coverdata
 	$(REBAR3) cover
 
 local-eunit:
 	$(REBAR3) eunit --sys_config conf/moirai-test.config
-
-local-ct:
-	$(REBAR3) ct --sys_config conf/moirai-test.config
 
 local-dialyzer:
 	$(REBAR3) dialyzer

@@ -28,10 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dependency hygiene** -- Checkout-aware Docker mounts and
   `scripts/purge-zombie-deps` prevent stale compiled dependencies from
   shadowing the active lock or checkout.
-- **Consolidated test gate** -- `make test` runs EUnit, Common Test,
-  runtime startup, Dialyzer, coverage, Compose validation, and a real
-  PTY/Edlin shell smoke test.
-- **Live integration coverage** -- Gated OpenRouter and gitmcp.io tests
-  exercise the assembled stack when their prerequisites are available.
+- **Consolidated test gate** -- `make test` runs EUnit, runtime startup,
+  Dialyzer, coverage, Compose validation, and a real PTY/Edlin shell
+  smoke test.
 - Docker-based build infrastructure, GitHub Actions CI, and the Avakas
   release workflow.

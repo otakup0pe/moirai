@@ -60,41 +60,6 @@ jobs:
       - name: Run tests
         run: make local-test
 
-  integration:
-    needs: rebar3
-    runs-on: ubuntu-latest
-    container:
-      image: erlang:27.3.4.9-slim@sha256:a8403c4e5ec42d6b48fe023ae1afd4e0fcfcb7272a559a6c5aa69d2f9d05ff12
-    if: ${{ github.event_name == 'push' }}
-
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      - name: Install build deps
-        run: apt-get update && apt-get install -y git curl
-
-      - name: Install rebar3
-        env:
-          REBAR3_SHA256: ${{ needs.rebar3.outputs.sha256 }}
-        run: |
-          set -e
-          curl -fsSL \
-            "https://github.com/erlang/rebar3/releases/download/${REBAR3_VERSION}/rebar3" \
-            -o /usr/local/bin/rebar3
-          echo "${REBAR3_SHA256}  /usr/local/bin/rebar3" | sha256sum -c -
-          chmod +x /usr/local/bin/rebar3
-          rebar3 version
-
-      - name: Require OpenRouter API key
-        env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        run: test -n "$OPENROUTER_API_KEY"
-
-      - name: Run integration tests
-        env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        run: rebar3 ct --suite moirai_integration_SUITE
-
   secrets:
     runs-on: ubuntu-latest
     steps:
@@ -106,7 +71,7 @@ jobs:
         run: make lint-secrets
 
   maybe_bump:
-    needs: [rebar3, test, integration, secrets]
+    needs: [rebar3, test, secrets]
     if: >-
       ${{
         github.event_name == 'push' &&

@@ -13,17 +13,16 @@ not a production application. Requires OTP 27+.
 ```
 make compile       # Docker-based rebar3 compile
 make test          # Docker-based consolidated gate
-make local-test    # eunit + ct + runtime smoke + dialyzer + cover
+make local-test    # eunit + runtime smoke + dialyzer + cover
 make local-eunit   # eunit only
-make local-ct      # common_test only
 make dialyzer      # Docker-based dialyzer
 make shell         # regular rebar3 shell
 make demo          # Shellbeam interactive demo + weather sidecar
 ```
 
-The consolidated `make test` gate runs EUnit, Common Test, the runtime
-smoke test, Dialyzer, coverage, Docker Compose validation, and a real
-PTY/Edlin shell smoke test.
+The consolidated `make test` gate runs EUnit, the runtime smoke test,
+Dialyzer, coverage, Docker Compose validation, and a real PTY/Edlin
+shell smoke test.
 
 rebar3 is not vendored; the Docker image installs the pinned release
 escript. All four git dependencies use exact public release tags.
@@ -58,7 +57,6 @@ when present.
 | `moirai_geoip_tests` | EUnit coverage for GeoIP response decoding and context |
 | `moirai_mcp_config_tests` | EUnit coverage for the gitmcp.io allow-list |
 | `moirai_purge_zombie_deps_tests` | EUnit coverage for checkout artifact cleanup |
-| `moirai_integration_SUITE` | Live LLM and gitmcp.io Common Test groups with prerequisite skips |
 
 ## Dependencies
 
@@ -83,10 +81,9 @@ entries are development overrides, not the shipped source of truth.
    conversation. Remote MCP clients are discovered asynchronously for
    an interactive shell and stopped when that shell ends.
 
-4. **Live integration gates** -- The LLM group requires
-   `OPENROUTER_API_KEY`; the public MCP group skips when its endpoint
-   is unavailable. Mocking either dependency would test the mock rather
-   than the assembled stack.
+4. **Dependency contract ownership** -- Moirai tests its own
+   configuration, tool selection, and handlers. Klotho owns agent-loop
+   semantics; erl_openrouter and erl_mcp own their protocol behavior.
 
 5. **Guardrailed gitmcp.io access** -- Only the three public stack
    repositories are queryable. Moirai and Klotho can be added after

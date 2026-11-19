@@ -92,8 +92,8 @@ by default.
 
 All standard targets run in Docker. The `local-*` variants require
 OTP 27+ and rebar3. `make test` is the consolidated gate: EUnit,
-Common Test, runtime smoke, Dialyzer, coverage, Compose validation, and
-the PTY/Edlin demo smoke test.
+runtime smoke, Dialyzer, coverage, Compose validation, and the
+PTY/Edlin demo smoke test.
 
 ```bash
 make compile
@@ -101,10 +101,6 @@ make test
 make dialyzer
 make shell
 ```
-
-`moirai_integration_SUITE` tests live LLM and MCP paths. The LLM
-group skips when `OPENROUTER_API_KEY` is absent; the MCP group skips
-when its public endpoint is unreachable.
 
 ## Public-endpoint posture
 
