@@ -1,6 +1,6 @@
 {application, moirai, [
     {description, "Erlang/OTP agent harness built from erl_openrouter, erl_mcp, klotho, and magicbeam"},
-    {vsn, "0.1.0"},
+    {vsn, "0.1.1"},
     {registered, []},
     {mod, {moirai_app, []}},
     {applications, [
