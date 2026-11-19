@@ -4,24 +4,21 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.test
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
     working_dir: /app
     volumes:
       - .:/app
-      - build_cache:/app/_build
-      - rebar3_cache:/root/.cache/rebar3
-      # Forward host SSH agent for private dep fetches (rebar3 git+ssh).
-      # Falls back to /dev/null when SSH_AUTH_SOCK is unset on the host
-      # so compose still starts; SSH-required deps will fail at fetch
-      # in that case (intentional -- loud failure beats silent skip).
-      - ${SSH_AUTH_SOCK:-/dev/null}:/ssh-agent
+      - build_cache_user:/app/_build
+      - rebar3_cache_user:/cache
     environment:
-      SSH_AUTH_SOCK: /ssh-agent
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     command: ["make", "local-test"]
 
 volumes:
-  build_cache:
-  rebar3_cache:
+  build_cache_user:
+  rebar3_cache_user:
 
 networks:
   default:

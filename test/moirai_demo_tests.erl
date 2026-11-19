@@ -3,6 +3,11 @@
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("klotho/include/klotho.hrl").
 
+version_matches_application_metadata_test() ->
+    Version = moirai:version(),
+    {ok, Vsn} = application:get_key(moirai, vsn),
+    ?assertEqual(unicode:characters_to_binary(Vsn), Version).
+
 safe_stop_dead_process_test() ->
     {Pid, Ref} = spawn_monitor(fun() -> ok end),
     receive

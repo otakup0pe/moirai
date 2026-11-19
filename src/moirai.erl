@@ -3,7 +3,7 @@
 -include_lib("klotho/include/klotho.hrl").
 
 -export([shell/0, spawn_shell/0, run/1, chat/1, tools/0, status/0,
-         reset/0, summarize/0, banner/0]).
+         reset/0, summarize/0, banner/0, version/0]).
 
 -ifdef(TEST).
 -export([build_config/5, safe_stop/1, namespace_gitmcp_tools/2]).
@@ -128,6 +128,15 @@ summarize() ->
             klotho_agent:resume(Pid, ?SUMMARY_PROMPT)
     end.
 
+-spec version() -> binary().
+version() ->
+    case application:load(moirai) of
+        ok -> ok;
+        {error, {already_loaded, moirai}} -> ok
+    end,
+    {ok, Vsn} = application:get_key(moirai, vsn),
+    to_binary(Vsn).
+
 -spec banner() -> binary().
 banner() ->
     iolist_to_binary([
@@ -207,7 +216,7 @@ discover_endpoint(Parent, Label, Url, Filter) ->
         server_url => Url,
         transport => erl_mcp_transport_http_streamable,
         auth => none,
-        client_info => #{name => <<"moirai">>, version => <<"0.1.0">>}
+        client_info => #{name => <<"moirai">>, version => version()}
     },
     case erl_mcp_client:start_link(Config) of
         {ok, Pid} ->

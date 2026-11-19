@@ -81,7 +81,7 @@ mcp_tool_discovery(_Config) ->
         server_url => Url,
         transport => erl_mcp_transport_http_streamable,
         auth => none,
-        client_info => #{name => <<"moirai-test">>, version => <<"0.1.0">>}
+        client_info => #{name => <<"moirai-test">>, version => moirai:version()}
     },
     case erl_mcp_client:start_link(ClientConfig) of
         {ok, Pid} ->

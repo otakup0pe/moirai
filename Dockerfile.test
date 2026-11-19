@@ -1,28 +1,32 @@
-FROM erlang:27-slim
+FROM erlang:27.3.4.9-slim@sha256:a8403c4e5ec42d6b48fe023ae1afd4e0fcfcb7272a559a6c5aa69d2f9d05ff12
 
 RUN apt-get update \
-    && apt-get install -y make git openssh-client \
+    && apt-get install -y make git curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Pre-populate system-wide known_hosts so git+ssh dep fetches don't
-# prompt for host-key verification when run with the host SSH agent
-# socket forwarded into the container at runtime.
-RUN mkdir -p /etc/ssh \
-    && ssh-keyscan github.com >> /etc/ssh/ssh_known_hosts 2>/dev/null \
-    && chmod 644 /etc/ssh/ssh_known_hosts
+ARG REBAR3_VERSION=3.28.0
+ARG REBAR3_SHA256=5a28b1cca082d3b023ec0f5df9d9f9d52557036c6f2a21c1ffa11b93a984dd42
+RUN curl -fsSL https://github.com/erlang/rebar3/releases/download/${REBAR3_VERSION}/rebar3 \
+    -o /usr/local/bin/rebar3 \
+    && echo "${REBAR3_SHA256}  /usr/local/bin/rebar3" | sha256sum -c - \
+    && chmod +x /usr/local/bin/rebar3 \
+    && rebar3 version
 
-# Install rebar3 from source -- erlang:27-slim ships rebar3 binary
-# but pinning to upstream HEAD avoids drift across base-image releases.
-RUN git clone https://github.com/erlang/rebar3.git /tmp/rebar3 \
-    && cd /tmp/rebar3 && ./bootstrap \
-    && install -m 755 /tmp/rebar3/rebar3 /usr/local/bin/rebar3 \
-    && rm -rf /tmp/rebar3
+# Bind-mounted source files must remain writable by the invoking user.
+ARG HOST_UID=1000
+ARG HOST_GID=1000
+RUN if ! getent group ${HOST_GID} >/dev/null; then \
+        groupadd -g ${HOST_GID} build; \
+    fi \
+    && if ! getent passwd ${HOST_UID} >/dev/null; then \
+        useradd -u ${HOST_UID} -g ${HOST_GID} -m -s /bin/sh build; \
+    fi \
+    && install -d -o ${HOST_UID} -g ${HOST_GID} /app /app/_build /cache
 
-# Source is bind-mounted from the host at runtime via compose, not
-# copied. _build and rebar3_cache are persistent named volumes.
-# Private git dependencies use the forwarded host SSH agent; optional
-# _checkouts symlinks are mounted by scripts/resolve-checkouts.
+ENV REBAR_CACHE_DIR=/cache
+
+USER ${HOST_UID}:${HOST_GID}
 
 CMD ["make", "local-test"]

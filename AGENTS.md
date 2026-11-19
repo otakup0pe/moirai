@@ -25,10 +25,10 @@ The consolidated `make test` gate runs EUnit, Common Test, the runtime
 smoke test, Dialyzer, coverage, Docker Compose validation, and a real
 PTY/Edlin shell smoke test.
 
-rebar3 is not vendored; the Docker image builds it from source.
-Klotho remains a private git dependency until its public release.
-A local `_checkouts/klotho` checkout overrides the declared dependency
-automatically when present.
+rebar3 is not vendored; the Docker image installs the pinned release
+escript. All four git dependencies use exact public release tags.
+Local `_checkouts/` entries override declared dependencies automatically
+when present.
 
 ## Module Inventory
 
